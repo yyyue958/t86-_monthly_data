@@ -34,12 +34,14 @@ if uploaded_file is not None:
             duplicate_column = st.selectbox(
                 "Column for duplicate removal", 
                 options=df.columns, 
-                index=0
+                index=0,
+                help="❓ Select the column that should have unique values (e.g., MAWB number)"
             )
             weight_column = st.selectbox(
                 "Weight column", 
                 options=df.columns, 
-                index=0
+                index=0,
+                help="❓ Select the column containing weight data. Rows with weight values will be prioritized when removing duplicates."
             )
         
         with col2:
@@ -47,9 +49,14 @@ if uploaded_file is not None:
             filter_column = st.selectbox(
                 "Column to filter", 
                 options=df.columns, 
-                index=0
+                index=0,
+                help="❓ Select the column where you want to exclude specific text values"
             )
-            filter_value = st.text_input("Value to exclude", value="ac one")
+            filter_value = st.text_input(
+                "Value to exclude", 
+                value="ac one",
+                help="❓ Enter text to exclude (case-insensitive). Rows containing this text will be removed."
+            )
         
         with col3:
             st.write("**📅 Date Filter**")
@@ -69,55 +76,64 @@ if uploaded_file is not None:
                 "Date column to filter",
                 options=date_columns if date_columns else df.columns,
                 index=0,
-                help="Select a column containing dates"
+                help="❓ Select a column containing dates for filtering"
             )
             
             # Date filter type selection
             date_filter_type = st.radio(
                 "Date filter type:",
                 ["Range Filter", "Single Date Filter"],
-                horizontal=True
+                horizontal=True,
+                help="❓ Choose whether to filter by a date range or a single specific date"
             )
             
             try:
                 # Convert to datetime for min/max calculation
                 date_series = pd.to_datetime(df[date_column], errors='coerce')
-                min_date = date_series.min()
-                max_date = date_series.max()
+                valid_dates = date_series.dropna()
                 
-                if pd.notna(min_date) and pd.notna(max_date):
+                if not valid_dates.empty:
+                    min_date = valid_dates.min().date()
+                    max_date = valid_dates.max().date()
+                    
+                    st.info(f"📅 Date range in data: {min_date} to {max_date}")
+                    
                     if date_filter_type == "Range Filter":
-                        st.write("**Select date range:**")
-                        start_date = st.date_input(
-                            "Start date",
-                            value=min_date,
-                            min_value=min_date,
-                            max_value=max_date,
-                            key="start_date"
-                        )
-                        end_date = st.date_input(
-                            "End date",
-                            value=max_date,
-                            min_value=min_date,
-                            max_value=max_date,
-                            key="end_date"
-                        )
+                        col4, col5 = st.columns(2)
+                        with col4:
+                            start_date = st.date_input(
+                                "Start date",
+                                value=min_date,
+                                min_value=min_date,
+                                max_value=max_date,
+                                key="start_date",
+                                help="❓ Select the beginning of your date range"
+                            )
+                        with col5:
+                            end_date = st.date_input(
+                                "End date",
+                                value=max_date,
+                                min_value=min_date,
+                                max_value=max_date,
+                                key="end_date",
+                                help="❓ Select the end of your date range"
+                            )
                         single_date = None
                     else:  # Single Date Filter
-                        st.write("**Select specific date:**")
                         single_date = st.date_input(
                             "Select date",
                             value=min_date,
                             min_value=min_date,
                             max_value=max_date,
-                            key="single_date"
+                            key="single_date",
+                            help="❓ Select a specific date to filter by"
                         )
                         start_date = end_date = None
                 else:
-                    st.warning("No valid dates found in selected column")
+                    st.warning("⚠️ No valid dates found in the selected column")
                     start_date = end_date = single_date = None
-            except:
-                st.warning("Could not parse dates from selected column")
+            except Exception as e:
+                st.warning(f"⚠️ Could not parse dates from selected column: {str(e)}")
                 start_date = end_date = single_date = None
         
         # Select columns to keep
@@ -125,10 +141,11 @@ if uploaded_file is not None:
         columns_to_keep = st.multiselect(
             "Choose columns", 
             options=df.columns, 
-            default=df.columns.tolist()[:4]
+            default=df.columns.tolist()[:4],
+            help="❓ Select which columns you want to include in the final output"
         )
         
-        if st.button("🚀 Process Data", type="primary"):
+        if st.button("🚀 Process Data", type="primary", help="❓ Click to process your data with the selected filters"):
             with st.spinner("Processing your data..."):
                 # Process data
                 df['has_weight'] = df[weight_column].notna()
@@ -138,15 +155,17 @@ if uploaded_file is not None:
                 # Filter out unwanted text values
                 if filter_value:
                     df_clean = df_clean[~df_clean[filter_column].astype(str).str.lower().str.contains(filter_value.lower(), na=False)]
+                    st.info(f"📝 Filtered out rows containing: '{filter_value}'")
                 
                 # Apply date filter
                 date_filter_applied = False
-                if date_column:
+                if date_column and ((date_filter_type == "Range Filter" and start_date and end_date) or 
+                                  (date_filter_type == "Single Date Filter" and single_date)):
                     try:
                         # Convert date column to datetime
                         df_clean['temp_date'] = pd.to_datetime(df_clean[date_column], errors='coerce')
                         
-                        if date_filter_type == "Range Filter" and start_date and end_date:
+                        if date_filter_type == "Range Filter":
                             # Convert user input dates to datetime
                             start_dt = pd.to_datetime(start_date)
                             end_dt = pd.to_datetime(end_date)
@@ -159,7 +178,7 @@ if uploaded_file is not None:
                             date_filter_applied = True
                             st.info(f"📅 Filtered by date range: {start_date} to {end_date}")
                             
-                        elif date_filter_type == "Single Date Filter" and single_date:
+                        else:  # Single Date Filter
                             # Convert user input date to datetime
                             single_dt = pd.to_datetime(single_date)
                             
@@ -174,7 +193,7 @@ if uploaded_file is not None:
                         df_clean = df_clean.drop(columns=['temp_date'])
                         
                     except Exception as e:
-                        st.warning(f"Could not apply date filter: {str(e)}")
+                        st.warning(f"⚠️ Could not apply date filter: {str(e)}")
                 
                 # Select only desired columns
                 final_df = df_clean[columns_to_keep]
@@ -190,10 +209,19 @@ if uploaded_file is not None:
                 with col3:
                     st.metric("Rows removed", df.shape[0] - final_df.shape[0])
                 
-                if date_filter_applied:
-                    st.info(f"📊 Showing {final_df.shape[0]} rows after date filtering")
-                
                 st.dataframe(final_df)
+                
+                # Show summary of applied filters
+                with st.expander("📊 Filter Summary"):
+                    st.write(f"- ✅ Removed duplicates based on: **{duplicate_column}**")
+                    if filter_value:
+                        st.write(f"- ✅ Filtered out text: **{filter_value}** from **{filter_column}**")
+                    if date_filter_applied:
+                        if date_filter_type == "Range Filter":
+                            st.write(f"- ✅ Date range: **{start_date}** to **{end_date}**")
+                        else:
+                            st.write(f"- ✅ Single date: **{single_date}**")
+                    st.write(f"- ✅ Columns kept: {', '.join(columns_to_keep)}")
                 
                 # Download button
                 csv = final_df.to_csv(index=False)
@@ -201,7 +229,8 @@ if uploaded_file is not None:
                     label="📥 Download Processed CSV",
                     data=csv,
                     file_name="cleaned_data.csv",
-                    mime="text/csv"
+                    mime="text/csv",
+                    help="❓ Download the processed data as a CSV file"
                 )
                 
     except Exception as e:
@@ -214,7 +243,7 @@ else:
 # Add instructions in sidebar
 st.sidebar.markdown("---")
 st.sidebar.info("""
-**How to use:**
+**❓ How to use:**
 1. 📁 Upload your CSV/Excel file
 2. ⚙️ Select processing options
 3. 📅 Choose date filter type:
@@ -226,4 +255,4 @@ st.sidebar.info("""
 """)
 
 st.sidebar.markdown("---")
-st.sidebar.success("**Date Filter Options:**\n- 📅 Range: Filter between two dates\n- 📆 Single: Filter for one specific date")
+st.sidebar.success("**💡 Tips:**\n- Hover over ❓ icons for help\n- Date range shows actual data limits\n- All filters are applied together")
